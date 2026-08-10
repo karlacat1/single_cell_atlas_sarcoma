@@ -1,0 +1,23 @@
+# data
+*.h5ad
+*.h5
+*.rds
+*.RData
+*.loom
+*.mtx
+*.fastq.gz
+data/
+
+# notebooks & python
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# misc
+.DS_Store
+*.log
