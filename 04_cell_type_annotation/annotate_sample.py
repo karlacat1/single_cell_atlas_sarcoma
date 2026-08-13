@@ -2,9 +2,13 @@
 Per-sample cell type annotation.
 
 Combines the automated consensus annotation from the preprocessing pipeline with
-SCEVAN copy-number calls and manual, marker-guided curation of each Leiden
-cluster. Non-malignant cells are then reclustered and annotated at finer
-resolution.
+the CNV-based malignant call from classify_malignant_cells.py and manual,
+marker-guided curation of each Leiden cluster. Non-malignant cells are then
+reclustered and annotated at finer resolution.
+
+Expects adata.obs["cnv_annotation"] ("malignant" / "non-malignant"), written by
+classify_malignant_cells.py. Writes adata.obs["final_annotation"] and a
+tab-separated cell annotation file for inferCNV.
 
 Run in two stages:
 
@@ -32,11 +36,11 @@ The annotation produced here is a starting point. Final cell type and cell state
 labels were assigned after cohort-wide integration.
 
 Usage:
-  python annotate_sample.py --adata sample.h5ad --config sample.json \
-      --scevan scevan_results.csv --output-dir results/ --stage explore
-  python annotate_sample.py --adata sample.h5ad --config sample.json \
-      --scevan scevan_results.csv --output-dir results/ --stage annotate \
-      --output-h5ad sample_annotated.h5ad
+  python annotate_sample.py --adata sample_cnv_classified.h5ad \
+      --config sample.json --sample-name SAMPLE --output-dir results/ --stage explore
+  python annotate_sample.py --adata sample_cnv_classified.h5ad \
+      --config sample.json --sample-name SAMPLE --output-dir results/ \
+      --stage annotate --output-h5ad sample_annotated.h5ad
 """
 
 import argparse
@@ -88,12 +92,10 @@ def majority_label_per_cluster(obs, label_col, cluster_col='leiden'):
     return mapping
 
 
-def malignant_from_cnv(cluster_to_scevan, malignant_values=('tumor', 'filtered')):
-    """
-    Clusters called malignant by SCEVAN. Cells SCEVAN could not classify
-    ('filtered') sit within tumor clusters and are treated as malignant.
-    """
-    return [c for c, v in cluster_to_scevan.items() if v in malignant_values]
+def malignant_clusters_from_cnv(obs, cluster_col='leiden', cnv_col='cnv_annotation'):
+    """Clusters called malignant by classify_malignant_cells.py."""
+    mapping = majority_label_per_cluster(obs, cnv_col, cluster_col)
+    return [c for c, v in mapping.items() if v == 'malignant']
 
 
 def present_genes(adata, genes):
@@ -135,17 +137,20 @@ def recluster(adata, n_pcs, resolution, n_neighbors=15):
 def main():
     parser = argparse.ArgumentParser(description='Per-sample cell type annotation.')
     parser.add_argument('--adata', required=True,
-                        help='Preprocessed .h5ad from the pipeline, with leiden clusters')
+                        help='.h5ad from classify_malignant_cells.py, with leiden '
+                             'clusters and cnv_annotation')
     parser.add_argument('--config', required=True,
                         help='JSON with the manual decisions for this sample')
-    parser.add_argument('--scevan', default=None,
-                        help='SCEVAN results CSV, indexed by cell barcode')
+    parser.add_argument('--sample-name', required=True,
+                        help='Sample identifier, used to name the annotation file')
     parser.add_argument('--output-dir', required=True)
     parser.add_argument('--output-h5ad', default=None,
                         help='Path for the annotated object; required for --stage annotate')
     parser.add_argument('--stage', choices=['explore', 'annotate'], default='explore')
     parser.add_argument('--consensus-col', default='cluster_to_consensus_all',
                         help='Automated consensus annotation from the pipeline')
+    parser.add_argument('--cnv-col', default='cnv_annotation',
+                        help='CNV-based malignant call from classify_malignant_cells.py')
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -162,14 +167,12 @@ def main():
     print(f'-> {adata.shape[0]} cells x {adata.shape[1]} genes, '
           f'{adata.obs["leiden"].nunique()} clusters')
 
-    # copy-number calls per cluster
-    cluster_to_scevan = {}
-    if args.scevan is not None:
-        scevan = pd.read_csv(args.scevan, index_col=0)
-        adata.obs['scevan_res'] = scevan.reindex(adata.obs_names).iloc[:, 0].astype(str)
-        cluster_to_scevan = majority_label_per_cluster(adata.obs, 'scevan_res')
-        print(f'-> SCEVAN malignant clusters: '
-              f'{", ".join(sorted(malignant_from_cnv(cluster_to_scevan)))}')
+    if args.cnv_col not in adata.obs.columns:
+        raise ValueError(f'{args.cnv_col} not found in adata.obs. '
+                         f'Run classify_malignant_cells.py first.')
+    cnv_per_cluster = majority_label_per_cluster(adata.obs, args.cnv_col)
+    cnv_malignant = malignant_clusters_from_cnv(adata.obs, cnv_col=args.cnv_col)
+    print(f'-> CNV malignant clusters: {", ".join(sorted(cnv_malignant, key=int))}')
 
     if args.stage == 'explore':
         print(f'\n-> Entity markers ({entity})')
@@ -181,7 +184,7 @@ def main():
         print('\n-> Automatic consensus annotation per cluster')
         consensus = majority_label_per_cluster(adata.obs, args.consensus_col)
         for cluster in sorted(consensus, key=lambda x: int(x)):
-            cnv = cluster_to_scevan.get(cluster, '-')
+            cnv = cnv_per_cluster.get(cluster, '-')
             print(f'   cluster {cluster:>3}  consensus: {consensus[cluster]:<20} CNV: {cnv}')
         print(f'\nInspect the plots in {args.output_dir}, then record the cluster '
               f'assignments in {args.config} and rerun with --stage annotate.')
@@ -194,7 +197,7 @@ def main():
     # start from the pipeline consensus, then apply the manual decisions
     cluster_to_annotation = majority_label_per_cluster(adata.obs, args.consensus_col)
 
-    malignant = set(malignant_from_cnv(cluster_to_scevan))
+    malignant = set(cnv_malignant)
     malignant |= set(str(c) for c in config.get('malignant_clusters', []))
     for cluster in malignant:
         cluster_to_annotation[cluster] = 'malignant'
@@ -229,9 +232,13 @@ def main():
             print(adata.obs['final_annotation'].value_counts().to_string())
 
     adata.write(args.output_h5ad)
-    adata.obs['final_annotation'].to_csv(
-        os.path.join(args.output_dir, 'final_annotation.csv'), sep='\t')
+
+    # tab-separated, no header: barcode + label, as expected by run_infercnv.R
+    annotation_path = os.path.join(args.output_dir,
+                                   f'{args.sample_name}_cell_annotation.txt')
+    adata.obs['final_annotation'].to_csv(annotation_path, sep='\t', header=False)
     print(f'\nDone. Annotated object written to {args.output_h5ad}')
+    print(f'Cell annotation for inferCNV written to {annotation_path}')
 
 
 if __name__ == '__main__':

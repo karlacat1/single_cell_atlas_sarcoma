@@ -1,0 +1,27 @@
+{
+  "entity": "ewing",
+  "malignant_clusters": [],
+  "cluster_labels": {
+    "10": "Stromal cells",
+    "12": "Myeloid cells",
+    "13": "unclear"
+  },
+  "non_malignant": {
+    "n_pcs": 6,
+    "resolution": 1.0,
+    "cluster_labels": {
+      "0": "Fibroblasts",
+      "1": "Endothelial cells",
+      "2": "Macrophages",
+      "4": "Macrophages",
+      "5": "Podocytes",
+      "6": "Fibroblasts",
+      "8": "Fibroblasts",
+      "9": "Endothelial cells",
+      "11": "T cells",
+      "12": "Macrophages",
+      "13": "Macrophages",
+      "14": "Distal Tubule cells"
+    }
+  }
+}
