@@ -23,7 +23,12 @@ set -euo pipefail
 SAMPLE_LIST="${1:?sample_list required}"
 DATA_DIR="${2:?data_dir required}"
 OUTPUT_DIR="${3:?output_dir required}"
-SOUPX_SCRIPT="${4:?soupx_script required}"
+
+SOUPX_SCRIPT="soupx.R"
+
+# Set mode here:
+SOUPX_MODE=(--auto)
+# SOUPX_MODE=(--fixed 0.4)
 
 while read -r sample_name; do
     [ -z "$sample_name" ] && continue
@@ -32,7 +37,7 @@ while read -r sample_name; do
     Rscript "$SOUPX_SCRIPT" \
         "${DATA_DIR}/${sample_name}_aligned/outs" \
         "$sample_name" \
-        "${OUTPUT_DIR}/${sample_name}"
-done < "$SAMPLE_LIST"
+        "${OUTPUT_DIR}/${sample_name}" \
+        "${SOUPX_MODE[@]}"
 
-echo 'Done.'
+done < "$SAMPLE_LIST"
