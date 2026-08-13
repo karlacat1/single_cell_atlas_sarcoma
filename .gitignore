@@ -21,3 +21,5 @@ __pycache__/
 # misc
 .DS_Store
 *.log
+demo/resources/
+demo/data/
