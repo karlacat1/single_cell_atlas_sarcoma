@@ -1,120 +1,26 @@
 #!/usr/bin/env python3
 """
-SCVI and SCANVI integration for multi-sample single-cell RNA-seq data.
+scVI and scANVI integration of the merged sarcoma dataset.
 
-Overview
---------
-This script performs the integration and semi-supervised annotation workflow
-used for the combined sarcoma dataset.
+Normalizes and log-transforms the counts, selects highly variable genes in a
+batch-aware manner, then trains scVI on the SoupX-corrected counts with sample
+and 10x chip as categorical covariates and mitochondrial percentage and total
+counts as continuous covariates. scANVI is initialized from the trained scVI
+model and uses cell_types as the label field, with "unclear" as the unlabeled
+category, to give the semi-supervised integrated representation.
 
-Workflow
---------
-1. Read the raw AnnData object.
-2. Normalize counts to a target library size.
-3. Log-transform the expression matrix.
-4. Identify highly variable genes in a batch-aware manner using the sample
-   identifier.
-5. Preserve the normalized/log-transformed data in `adata.raw`.
-6. Configure and train an SCVI model using:
-       - SoupX-corrected counts
-       - sample
-       - 10x chip
-       - mitochondrial percentage
-       - total counts
-   as model covariates.
-7. Store the SCVI latent representation.
-8. Store SCVI normalized expression.
-9. Initialize SCANVI from the trained SCVI model.
-10. Use `cell_types` as the cell-type label field and `unclear` as the
-    unlabeled category.
-11. Train SCANVI.
-12. Store the SCANVI latent representation.
-13. Store SCANVI-predicted cell types.
-14. Save the trained SCVI and SCANVI models.
-15. Save the final annotated AnnData object.
+Input: .h5ad with a soupX_counts layer and obs columns sample, 10x_chip,
+pct_counts_mt, total_counts and cell_types.
 
-Input
------
-The input AnnData object is expected to contain:
+Output: .h5ad with X_scVI and X_scANVI in .obsm, scvi_normalized in .layers,
+annotation_scanvi in .obs, and the log-normalized matrix retained in .raw;
+plus the trained scVI and scANVI models.
 
-    adata.layers["soupX_counts"]
-        Raw/SoupX-corrected count matrix used for SCVI.
-
-    adata.obs["sample"]
-        Sample identifier.
-
-    adata.obs["10x_chip"]
-        10x sequencing chip identifier.
-
-    adata.obs["pct_counts_mt"]
-        Percentage of mitochondrial reads.
-
-    adata.obs["total_counts"]
-        Total counts per cell.
-
-    adata.obs["cell_types"]
-        Cell-type annotations used by SCANVI. Cells without a confident
-        annotation should be labelled "unclear".
-
-Outputs
--------
-The final AnnData object contains:
-
-    adata.obsm["X_scVI"]
-        SCVI latent representation.
-
-    adata.layers["scvi_normalized"]
-        SCVI normalized expression.
-
-    adata.obsm["X_scANVI"]
-        SCANVI latent representation.
-
-    adata.obs["annotation_scanvi"]
-        SCANVI-predicted cell-type annotation.
-
-HVG information is stored in:
-
-    adata.var["highly_variable"]
-
-The normalized/log-transformed expression matrix is retained in:
-
-    adata.raw
-
-Example
--------
-python integrate_scvi_scanvi.py \
-    --input-h5ad data/all_89_raw.h5ad \
-    --output-h5ad results/all_89_scvi_scanvi.h5ad \
-    --scvi-model results/models/all_89_scvi \
-    --scanvi-model results/models/all_89_scanvi
-
-Notes
------
-The SCVI model uses the `soupX_counts` layer as its count matrix. This is
-important because SCVI expects count data rather than the normalized/log-
-transformed matrix in `adata.X`.
-
-The original analysis used:
-    target_sum = 1e4
-    n_top_genes = 3000
-    flavor = "seurat_v3_paper"
-    batch_key = "sample"
-    min_mean = 0.0125
-    max_mean = 3
-    min_disp = 0.5
-    span = 1
-    check_values = False
-
-These defaults are retained here.
-
-SCVI setup uses:
-    categorical_covariate_keys = ["sample", "10x_chip"]
-    continuous_covariate_keys = ["pct_counts_mt", "total_counts"]
-
-SCANVI is initialized from the trained SCVI model using
-`SCANVI.from_scvi_model()`.
+Usage:
+  python integrate_scvi_scanvi.py --input-h5ad raw.h5ad \
+      --output-h5ad integrated.h5ad \
+      --scvi-model models/scvi --scanvi-model models/scanvi
 """
-
 
 from __future__ import annotations
 

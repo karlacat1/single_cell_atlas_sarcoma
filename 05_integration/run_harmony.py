@@ -1,78 +1,22 @@
 #!/usr/bin/env python3
 """
-Harmony-based integration of multi-sample single-cell RNA-seq data.
+Harmony integration of multi-sample single-cell RNA-seq data.
 
-Workflow
---------
-1. Read a preprocessed AnnData object.
-2. Identify highly variable genes in a sample-aware manner.
-3. Retain the selected HVGs for dimensionality reduction.
-4. Regress out total counts and mitochondrial fraction.
-5. Scale expression values.
-6. Compute PCA.
-7. Correct the PCA representation using Harmony with sample and 10x-chip
-   batch variables.
-8. Compute the neighborhood graph using the Harmony representation.
-9. Compute UMAP.
-10. Compute Leiden clusters.
-11. Save the integrated AnnData object.
+Selects highly variable genes in a sample-aware manner, regresses out total
+counts and mitochondrial fraction, scales, computes PCA, and corrects the PCA
+representation with Harmony using sample and 10x chip as batch variables. The
+neighborhood graph, UMAP and Leiden clustering are computed on the corrected
+representation in adata.obsm["X_pca_harmony"].
 
-The integration is performed in PCA space. Harmony generates the corrected
-representation in:
+Input: normalized, log-transformed .h5ad with obs columns sample, 10x_chip,
+total_counts and pct_counts_mt.
 
-    adata.obsm["X_pca_harmony"]
+Output: integrated .h5ad.
 
-The downstream neighborhood graph, UMAP, and Leiden clustering are based
-on this Harmony representation.
-
-Expected input
---------------
-The input AnnData object should contain:
-
-    adata.obs["sample"]
-        Sample/batch identifier.
-
-    adata.obs["10x_chip"]
-        10x sequencing chip identifier.
-
-    adata.obs["total_counts"]
-        Total counts per cell.
-
-    adata.obs["pct_counts_mt"]
-        Percentage of mitochondrial reads.
-
-The expression matrix should already be normalized/log-transformed if that
-is how the preceding workflow is structured.
-
-Example
--------
-python harmony_integration.py \
-    --input-h5ad data/all_89_processed.h5ad \
-    --output-h5ad results/all_89_harmony.h5ad
-
-Example with explicit parameters
----------------------------------
-python harmony_integration.py \
-    --input-h5ad data/all_89_processed.h5ad \
-    --output-h5ad results/all_89_harmony.h5ad \
-    --n-hvgs 2000 \
-    --n-pcs 50 \
-    --n-neighbors 15 \
-    --min-dist 0.5 \
-    --leiden-resolution 0.5
-
-Notes
------
-The original workflow used 2,000 HVGs in the explicit Harmony analysis.
-This is therefore the default here.
-
-The original code also contained a version using an externally defined
-`n_hgv` value. The number of HVGs is now an explicit parameter.
-
-Harmony requires its Python dependency (typically `harmonypy`) to be
-available in the analysis environment. Scanpy exposes Harmony integration
-through its external preprocessing interface. The corrected embedding is
-then suitable for downstream graph construction. :contentReference[oaicite:0]{index=0}
+Usage:
+  python harmony_integration.py --input-h5ad processed.h5ad \
+      --output-h5ad harmony.h5ad [--n-hvgs 3000] [--n-pcs 50] \
+      [--n-neighbors 15] [--min-dist 0.5] [--leiden-resolution 0.5]
 """
 
 from __future__ import annotations
@@ -89,7 +33,7 @@ import scanpy.external as sce
 # Default parameters
 # =============================================================================
 
-DEFAULT_N_HVGS = 2000
+DEFAULT_N_HVGS = 3000
 DEFAULT_N_PCS = 50
 DEFAULT_N_NEIGHBORS = 15
 DEFAULT_MIN_DIST = 0.5
