@@ -190,7 +190,7 @@ class PrepProcessing:
         with rc_context({'figure.figsize': (10, 8)}):
             sc.pl.violin(self.adata_prep, 'n_genes_by_counts',
                          jitter=0.4, groupby='predicted_doublets', rotation=45,
-                         show=show, title='Doublet comparison')
+                         show=show,)
         plt.savefig(self.output_directory + '/' + self.filename + '_doublet_compare.png',
                     dpi=120, bbox_inches='tight')
         plt.close()

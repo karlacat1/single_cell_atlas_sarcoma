@@ -7,13 +7,8 @@ Leiden clustering, UMAP, and an initial automated cell type annotation combining
 differential expression, CellTypist, PanglaoDB and gene set enrichment into a
 consensus call.
 
-Input is either a Cell Ranger MEX directory or a preprocessed .h5ad file. Ambient
-RNA removal with SoupX is performed beforehand (see 02_preprocessing/soupx); this
-pipeline expects SoupX-corrected counts as input.
-
-The automated annotation produced here is a starting point for manual curation,
-not the final annotation used in the manuscript. Final cell type and cell state
-labels were assigned after cohort-wide integration (see 05_integration).
+Input is either a Cell Ranger MEX directory or a preprocessed .h5ad file. The automated annotation produced here is a starting point for manual curation,
+not the final annotation used in the manuscript. 
 
 Usage:
     python main.py -d <path> [-n sample_name] [-o output_dir] [-j params.json] [-pr] [-dw]
@@ -40,10 +35,10 @@ import os
 from datetime import date
 import time
 import json
-import Preprocessing.preprocessing as pr
-import Downstream_Analysis.visualization as visualization
-import Downstream_Analysis.clustering as clustering
-import Downstream_Analysis.cell_annotation as cell_annotation
+import preprocessing as pr
+import visualization
+import clustering
+import cell_annotation
 import utils
 
 parameters = {
