@@ -192,7 +192,7 @@ class Cell_Annotation:
 
         celltypes = np.unique(self.adata_norm.obs["highest_confidence"])
         cluster_to_celltype_conf = {}
-        celltype_distribution_conf = pd.DataFrame(0, columns=self.clusters, index=celltypes)
+        celltype_distribution_conf = pd.DataFrame(0.0, columns=self.clusters, index=celltypes)
         for name, group in self.adata_norm.obs.groupby(by='leiden'):
             unique, counts = np.unique(group['highest_confidence'], return_counts=True)
             cluster_to_celltype_conf[name] = unique[np.argmax(counts)]
@@ -204,7 +204,7 @@ class Cell_Annotation:
         plt.savefig(self.output_directory + '/' + self.filename + '_confidence_score.png', bbox_inches='tight')
         plt.close()
 
-        self.adata_norm.obs['cluster_to_celltypist'] = self.adata_norm.obs['leiden'].replace(cluster_to_celltype_conf)
+        self.adata_norm.obs['cluster_to_celltypist'] = self.adata_norm.obs['leiden'].astype(str).replace(cluster_to_celltype_conf)
         self.adata_norm.obs['healthy_vs_tumor_celltypist'] = self.adata_norm.obs['cluster_to_celltypist'].astype(
             'string')
         self.adata_norm.obs.loc[
@@ -254,14 +254,14 @@ class Cell_Annotation:
                 if 'malignant' in max_celltype:
                     cluster_to_pangl_db[cluster] = 'unclear'
 
-        self.adata_norm.obs['cluster_to_panglaodb'] = self.adata_norm.obs['leiden'].replace(cluster_to_pangl_db)
+        self.adata_norm.obs['cluster_to_panglaodb'] = self.adata_norm.obs['leiden'].astype(str).replace(cluster_to_pangl_db)
         cluster_to_complete = dict(cluster_to_pangl_db)
 
         for i in cluster_to_pangl_db.keys():
             if cluster_to_pangl_db[i] != 'malignant' and cluster_to_pangl_db[i] != 'unclear':
                 cluster_to_pangl_db[i] = 'non malignant'
 
-        self.adata_norm.obs['healthy_vs_tumor_panglaodb'] = self.adata_norm.obs['leiden'].replace(cluster_to_pangl_db)
+        self.adata_norm.obs['healthy_vs_tumor_panglaodb'] = self.adata_norm.obs['leiden'].astype(str).replace(cluster_to_pangl_db)
         nr_non_malignant = np.sum(self.adata_norm.obs['healthy_vs_tumor_panglaodb'] == 'non malignant')
         nr_malignant = np.sum(self.adata_norm.obs['healthy_vs_tumor_panglaodb'] != 'non malignant')
 
@@ -379,7 +379,7 @@ class Cell_Annotation:
         consensus['results'] = consensus.apply(lambda x: consensus_celltype(x), axis=1)
         consensus.to_csv(self.output_directory + '/' + self.filename + '_consensus_result_complete.csv', sep='\t')
         cluster_to_consensus = dict(zip(consensus.index.astype('str'), consensus['results']))
-        self.adata_norm.obs['cluster_to_consensus_all'] = self.adata_norm.obs['leiden'].replace(cluster_to_consensus)
+        self.adata_norm.obs['cluster_to_consensus_all'] = self.adata_norm.obs['leiden'].astype(str).replace(cluster_to_consensus)
 
         consensus = pd.DataFrame(
             [cluster_to_de.values(), cluster_to_celltypist.values(), cluster_to_panglaodb.values(),
@@ -390,7 +390,7 @@ class Cell_Annotation:
         consensus.to_csv(self.output_directory + '/' + self.filename + '_consensus_result.csv', sep='\t')
 
         cluster_to_consensus = dict(zip(consensus.index.astype('str'), consensus['results']))
-        self.adata_norm.obs['cluster_to_consensus_malignant'] = self.adata_norm.obs['leiden'].replace(
+        self.adata_norm.obs['cluster_to_consensus_malignant'] = self.adata_norm.obs['leiden'].astype(str).replace(
             cluster_to_consensus)
 
         print('Nr of cells: ', self.adata_norm.shape[0])
