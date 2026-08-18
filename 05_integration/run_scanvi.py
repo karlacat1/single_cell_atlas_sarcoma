@@ -58,170 +58,66 @@ DEFAULT_COUNTS_LAYER = "soupX_counts"
 # Input validation
 # =============================================================================
 
-def validate_input(
-    adata: ad.AnnData,
-    sample_key: str,
-    chip_key: str,
-    labels_key: str,
-    pct_mt_key: str,
-    total_counts_key: str,
-    counts_layer: str,
-    unlabeled_category: str,
-) -> None:
-    """
-    Validate that all fields required for SCVI/SCANVI are present.
-    """
-    required_obs_columns = {
-        sample_key,
-        chip_key,
-        labels_key,
-        pct_mt_key,
-        total_counts_key,
-    }
-
-    missing_obs = (
-        required_obs_columns
-        - set(adata.obs.columns)
-    )
+def validate_input(adata: ad.AnnData, sample_key: str, chip_key: str, labels_key: str, pct_mt_key: str, total_counts_key: str, counts_layer: str, unlabeled_category: str) -> None:
+    """Validate that all fields required for SCVI/SCANVI are present."""
+    required_obs_columns = {sample_key, chip_key, labels_key, pct_mt_key, total_counts_key}
+    missing_obs = required_obs_columns - set(adata.obs.columns)
 
     if missing_obs:
-        raise ValueError(
-            "The input AnnData object is missing the following "
-            "required obs columns: "
-            + ", ".join(sorted(missing_obs))
-        )
+        raise ValueError("The input AnnData object is missing the following required obs columns: " + ", ".join(sorted(missing_obs)))
 
-    if counts_layer not in adata.layers:
-        raise ValueError(
-            f"The required count layer "
-            f"'{counts_layer}' is not present in adata.layers."
-        )
+    if counts_layer in adata.layers:
+        print(f"Using '{counts_layer}' as the SCVI count layer.")
+    else:
+        print(f"Layer '{counts_layer}' not found. Using adata.X as the SCVI count matrix.")
 
-    labels = (
-        adata.obs[labels_key]
-        .astype(str)
-    )
+    labels = adata.obs[labels_key].astype(str)
 
     if unlabeled_category not in set(labels.unique()):
-        raise ValueError(
-            f"The label column '{labels_key}' does not contain "
-            f"the required unlabeled category "
-            f"'{unlabeled_category}'."
-        )
+        raise ValueError(f"The label column '{labels_key}' does not contain the required unlabeled category '{unlabeled_category}'.")
 
     if adata.n_obs == 0:
-        raise ValueError(
-            "The AnnData object contains no cells."
-        )
+        raise ValueError("The AnnData object contains no cells.")
 
     if adata.n_vars == 0:
-        raise ValueError(
-            "The AnnData object contains no genes."
-        )
+        raise ValueError("The AnnData object contains no genes.")
 
 
 # =============================================================================
 # Preprocessing
 # =============================================================================
 
-def preprocess_data(
-    adata: ad.AnnData,
-    sample_key: str,
-    target_sum: float,
-    n_hvgs: int,
-    min_mean: float,
-    max_mean: float,
-    min_disp: float,
-    span: float,
-) -> None:
-    """
-    Normalize, log-transform, and identify batch-aware HVGs.
-
-    The full normalized/log-transformed matrix is retained in the AnnData
-    object. HVG status is stored in adata.var rather than subsetting the
-    dataset.
-    """
+def preprocess_data(adata: ad.AnnData, sample_key: str, target_sum: float, n_hvgs: int, min_mean: float, max_mean: float, min_disp: float, span: float) -> None:
+    """Normalize, log-transform, and identify batch-aware HVGs."""
     print("\nNormalizing expression data...")
-
-    sc.pp.normalize_total(
-        adata,
-        target_sum=target_sum,
-    )
+    sc.pp.normalize_total(adata, target_sum=target_sum)
 
     print("Log-transforming expression data...")
-
     sc.pp.log1p(adata)
 
-    print(
-        f"Selecting {n_hvgs:,} highly variable genes "
-        f"using batch-aware selection with '{sample_key}'..."
-    )
-
-    sc.pp.highly_variable_genes(
-        adata,
-        flavor="seurat_v3_paper",
-        batch_key=sample_key,
-        min_mean=min_mean,
-        max_mean=max_mean,
-        min_disp=min_disp,
-        n_top_genes=n_hvgs,
-        span=span,
-        check_values=False,
-    )
+    print(f"Selecting {n_hvgs:,} highly variable genes using batch-aware selection with '{sample_key}'...")
+    sc.pp.highly_variable_genes(adata, flavor="seurat_v3_paper", batch_key=sample_key, min_mean=min_mean, max_mean=max_mean, min_disp=min_disp, n_top_genes=n_hvgs, span=span, check_values=False)
 
     # Preserve the normalized/log-transformed expression matrix.
     adata.raw = adata
 
-    n_hvgs_found = int(
-        adata.var["highly_variable"].sum()
-    )
-
-    print(
-        f"Highly variable genes identified: "
-        f"{n_hvgs_found:,}"
-    )
+    n_hvgs_found = int(adata.var["highly_variable"].sum())
+    print(f"Highly variable genes identified: {n_hvgs_found:,}")
 
 
 # =============================================================================
 # SCVI setup
 # =============================================================================
 
-def setup_scvi(
-    adata: ad.AnnData,
-    counts_layer: str,
-    sample_key: str,
-    chip_key: str,
-    pct_mt_key: str,
-    total_counts_key: str,
-) -> None:
-    """
-    Register the AnnData object for SCVI.
-
-    The raw/SoupX count layer is used as the model input.
-    Sample and 10x chip are treated as categorical covariates.
-    Mitochondrial percentage and total counts are continuous covariates.
-    """
+def setup_scvi(adata: ad.AnnData, counts_layer: str, sample_key: str, chip_key: str, pct_mt_key: str, total_counts_key: str) -> None:
+    """Register the AnnData object for SCVI."""
     print("\nSetting up SCVI...")
 
     # Preserve the original workflow's explicit string conversion.
-    adata.obs[chip_key] = (
-        adata.obs[chip_key]
-        .astype(str)
-    )
-
-    scvi.model.SCVI.setup_anndata(
-        adata=adata,
-        layer=counts_layer,
-        categorical_covariate_keys=[
-            sample_key,
-            chip_key,
-        ],
-        continuous_covariate_keys=[
-            pct_mt_key,
-            total_counts_key,
-        ],
-    )
-
+    adata.obs[chip_key] = adata.obs[chip_key].astype(str)
+    layer = counts_layer if counts_layer in adata.layers else None
+    scvi.model.SCVI.setup_anndata(adata=adata, layer=layer, categorical_covariate_keys=[sample_key, chip_key],
+                                  continuous_covariate_keys=[pct_mt_key, total_counts_key])
     print("SCVI AnnData setup completed.")
 
 
@@ -229,25 +125,13 @@ def setup_scvi(
 # SCVI model
 # =============================================================================
 
-def train_scvi(
-    adata: ad.AnnData,
-    max_epochs: int | None,
-    accelerator: str,
-    devices: int | str | None,
-):
-    """
-    Initialize and train the SCVI model.
-    """
+def train_scvi(adata: ad.AnnData, max_epochs: int | None, accelerator: str, devices: int | str | None):
+    """Initialize and train the SCVI model."""
     print("\nInitializing SCVI model...")
-
-    model_scvi = scvi.model.SCVI(
-        adata,
-    )
-
+    model_scvi = scvi.model.SCVI(adata)
     model_scvi.view_anndata_setup()
 
     print("\nTraining SCVI model...")
-
     train_kwargs = {}
 
     if max_epochs is not None:
@@ -259,10 +143,7 @@ def train_scvi(
     if devices is not None:
         train_kwargs["devices"] = devices
 
-    model_scvi.train(
-        **train_kwargs,
-    )
-
+    model_scvi.train(**train_kwargs)
     print("SCVI training completed.")
 
     return model_scvi
@@ -272,87 +153,34 @@ def train_scvi(
 # SCVI outputs
 # =============================================================================
 
-def add_scvi_outputs(
-    adata: ad.AnnData,
-    model_scvi,
-    library_size: float,
-) -> None:
-    """
-    Add the SCVI latent representation and normalized expression.
-    """
+def add_scvi_outputs(adata: ad.AnnData, model_scvi, library_size: float) -> None:
+    """Add the SCVI latent representation and normalized expression."""
     print("\nComputing SCVI latent representation...")
-
-    latent = (
-        model_scvi
-        .get_latent_representation()
-    )
-
+    latent = model_scvi.get_latent_representation()
     adata.obsm["X_scVI"] = latent
 
-    print(
-        f"SCVI latent representation: "
-        f"{latent.shape[0]:,} cells × "
-        f"{latent.shape[1]:,} dimensions."
-    )
+    print(f"SCVI latent representation: {latent.shape[0]:,} cells × {latent.shape[1]:,} dimensions.")
 
-    print(
-        "Computing SCVI normalized expression..."
-    )
+    print("Computing SCVI normalized expression...")
+    normalized_expression = model_scvi.get_normalized_expression(library_size=library_size)
 
-    normalized_expression = (
-        model_scvi
-        .get_normalized_expression(
-            library_size=library_size,
-        )
-    )
+    # Ensure that the result is stored as a dense numeric matrix compatible with AnnData layers.
+    if isinstance(normalized_expression, pd.DataFrame):
+        normalized_expression = normalized_expression.loc[adata.obs_names, adata.var_names].to_numpy()
 
-    # Ensure that the result is stored as a dense numeric matrix
-    # compatible with AnnData layers.
-    if isinstance(
-        normalized_expression,
-        pd.DataFrame,
-    ):
-        normalized_expression = (
-            normalized_expression.loc[
-                adata.obs_names,
-                adata.var_names,
-            ].to_numpy()
-        )
+    adata.layers["scvi_normalized"] = normalized_expression
 
-    adata.layers["scvi_normalized"] = (
-        normalized_expression
-    )
-
-    print(
-        "SCVI normalized expression stored in "
-        "`adata.layers['scvi_normalized']`."
-    )
+    print("SCVI normalized expression stored in `adata.layers['scvi_normalized']`.")
 
 
 # =============================================================================
 # SCANVI setup
 # =============================================================================
 
-def initialize_scanvi(
-    model_scvi,
-    labels_key: str,
-    unlabeled_category: str,
-):
-    """
-    Initialize SCANVI from a pretrained SCVI model.
-    """
-    print(
-        "\nInitializing SCANVI from the trained SCVI model..."
-    )
-
-    model_scanvi = (
-        scvi.model.SCANVI.from_scvi_model(
-            model_scvi,
-            labels_key=labels_key,
-            unlabeled_category=unlabeled_category,
-        )
-    )
-
+def initialize_scanvi(model_scvi, labels_key: str, unlabeled_category: str):
+    """Initialize SCANVI from a pretrained SCVI model."""
+    print("\nInitializing SCANVI from the trained SCVI model...")
+    model_scanvi = scvi.model.SCANVI.from_scvi_model(model_scvi, labels_key=labels_key, unlabeled_category=unlabeled_category)
     print("SCANVI initialization completed.")
 
     return model_scanvi
@@ -362,19 +190,11 @@ def initialize_scanvi(
 # SCANVI training
 # =============================================================================
 
-def train_scanvi(
-    model_scanvi,
-    max_epochs: int | None,
-    accelerator: str,
-    devices: int | str | None,
-) -> None:
-    """
-    Train the SCANVI model.
-    """
+def train_scanvi(model_scanvi, max_epochs: int | None, accelerator: str, devices: int | str | None) -> None:
+    """Train the SCANVI model."""
     model_scanvi.view_anndata_setup()
 
     print("\nTraining SCANVI model...")
-
     train_kwargs = {}
 
     if max_epochs is not None:
@@ -386,10 +206,7 @@ def train_scanvi(
     if devices is not None:
         train_kwargs["devices"] = devices
 
-    model_scanvi.train(
-        **train_kwargs,
-    )
-
+    model_scanvi.train(**train_kwargs)
     print("SCANVI training completed.")
 
 
@@ -397,195 +214,76 @@ def train_scanvi(
 # SCANVI outputs
 # =============================================================================
 
-def add_scanvi_outputs(
-    adata: ad.AnnData,
-    model_scanvi,
-) -> None:
-    """
-    Add the SCANVI latent representation and cell-type predictions.
-    """
+def add_scanvi_outputs(adata: ad.AnnData, model_scanvi) -> None:
+    """Add the SCANVI latent representation and cell-type predictions."""
     print("\nComputing SCANVI latent representation...")
-
-    latent = (
-        model_scanvi
-        .get_latent_representation()
-    )
-
+    latent = model_scanvi.get_latent_representation()
     adata.obsm["X_scANVI"] = latent
 
-    print(
-        f"SCANVI latent representation: "
-        f"{latent.shape[0]:,} cells × "
-        f"{latent.shape[1]:,} dimensions."
-    )
+    print(f"SCANVI latent representation: {latent.shape[0]:,} cells × {latent.shape[1]:,} dimensions.")
 
-    print(
-        "\nPredicting cell types with SCANVI..."
-    )
+    print("\nPredicting cell types with SCANVI...")
+    adata.obs["annotation_scanvi"] = model_scanvi.predict(adata)
 
-    adata.obs["annotation_scanvi"] = (
-        model_scanvi.predict(adata)
-    )
-
-    print(
-        "\nSCANVI annotation summary:"
-    )
-
-    print(
-        adata.obs["annotation_scanvi"]
-        .value_counts(dropna=False)
-    )
+    print("\nSCANVI annotation summary:")
+    print(adata.obs["annotation_scanvi"].value_counts(dropna=False))
 
 
 # =============================================================================
 # Model saving
 # =============================================================================
 
-def save_model(
-    model,
-    output_path: Path,
-    overwrite: bool,
-    model_name: str,
-) -> None:
-    """
-    Save a scvi-tools model using native serialization.
-    """
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+def save_model(model, output_path: Path, overwrite: bool, model_name: str) -> None:
+    """Save a scvi-tools model using native serialization."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(
-        f"\nSaving {model_name} model to: "
-        f"{output_path}"
-    )
-
-    model.save(
-        output_path,
-        overwrite=overwrite,
-    )
-
-    print(
-        f"{model_name} model saved."
-    )
+    print(f"\nSaving {model_name} model to: {output_path}")
+    model.save(output_path, overwrite=overwrite)
+    print(f"{model_name} model saved.")
 
 
 # =============================================================================
 # Data saving
 # =============================================================================
 
-def save_annotated_data(
-    adata: ad.AnnData,
-    output_h5ad: Path,
-) -> None:
-    """
-    Save the final AnnData object.
-    """
-    output_h5ad.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+def save_annotated_data(adata: ad.AnnData, output_h5ad: Path) -> None:
+    """Save the final AnnData object."""
+    output_h5ad.parent.mkdir(parents=True, exist_ok=True)
 
-    print(
-        f"\nSaving final AnnData object: "
-        f"{output_h5ad}"
-    )
-
-    adata.write(
-        output_h5ad,
-    )
-
+    print(f"\nSaving final AnnData object: {output_h5ad}")
+    adata.write(output_h5ad)
     print("AnnData saved.")
 
 
-def save_scanvi_annotations(
-    adata: ad.AnnData,
-    output_annotations: Path,
-) -> None:
-    """
-    Save SCANVI cell-level predictions.
-    """
-    output_annotations.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+def save_scanvi_annotations(adata: ad.AnnData, output_annotations: Path) -> None:
+    """Save SCANVI cell-level predictions."""
+    output_annotations.parent.mkdir(parents=True, exist_ok=True)
 
-    annotation_table = adata.obs[
-        ["annotation_scanvi"]
-    ].copy()
+    annotation_table = adata.obs[["annotation_scanvi"]].copy()
+    annotation_table.to_csv(output_annotations, sep="\t", header=True, index=True)
 
-    annotation_table.to_csv(
-        output_annotations,
-        sep="\t",
-        header=True,
-        index=True,
-    )
-
-    print(
-        f"SCANVI annotations saved to: "
-        f"{output_annotations}"
-    )
+    print(f"SCANVI annotations saved to: {output_annotations}")
 
 
 # =============================================================================
 # Main workflow
 # =============================================================================
 
-def run_analysis(
-    input_h5ad: Path,
-    output_h5ad: Path,
-    scvi_model_path: Path,
-    scanvi_model_path: Path,
-    output_annotations: Path,
-    sample_key: str,
-    chip_key: str,
-    labels_key: str,
-    unlabeled_category: str,
-    pct_mt_key: str,
-    total_counts_key: str,
-    counts_layer: str,
-    target_sum: float,
-    n_hvgs: int,
-    min_mean: float,
-    max_mean: float,
-    min_disp: float,
-    span: float,
-    scvi_max_epochs: int | None,
-    scanvi_max_epochs: int | None,
-    accelerator: str,
-    devices: int | str | None,
-    library_size: float,
-    seed: int,
-    overwrite: bool,
-) -> None:
-    """
-    Execute the complete SCVI/SCANVI workflow.
-    """
+def run_analysis(input_h5ad: Path, output_h5ad: Path, scvi_model_path: Path, scanvi_model_path: Path, output_annotations: Path, sample_key: str, chip_key: str, labels_key: str, unlabeled_category: str, pct_mt_key: str, total_counts_key: str, counts_layer: str, target_sum: float, n_hvgs: int, min_mean: float, max_mean: float, min_disp: float, span: float, scvi_max_epochs: int | None, scanvi_max_epochs: int | None, accelerator: str, devices: int | str | None, library_size: float, seed: int, overwrite: bool) -> None:
+    """Execute the complete SCVI/SCANVI workflow."""
     # -------------------------------------------------------------------------
     # 1. Set reproducibility seed
     # -------------------------------------------------------------------------
     scvi.settings.seed = seed
-
-    print(
-        f"Random seed: {seed}"
-    )
+    print(f"Random seed: {seed}")
 
     # -------------------------------------------------------------------------
     # 2. Read input data
     # -------------------------------------------------------------------------
-    print(
-        f"\nReading AnnData: {input_h5ad}"
-    )
+    print(f"\nReading AnnData: {input_h5ad}")
+    adata = sc.read_h5ad(input_h5ad)
 
-    adata = sc.read_h5ad(
-        input_h5ad,
-    )
-
-    print(
-        f"Loaded dataset: "
-        f"{adata.n_obs:,} cells × "
-        f"{adata.n_vars:,} genes."
-    )
+    print(f"Loaded dataset: {adata.n_obs:,} cells × {adata.n_vars:,} genes.")
 
     # -------------------------------------------------------------------------
     # 3. Validate input
@@ -604,11 +302,9 @@ def run_analysis(
     # -------------------------------------------------------------------------
     # 4. Normalize and identify HVGs
     # -------------------------------------------------------------------------
-    #
     # This follows the original workflow. Importantly, the SoupX count
     # layer remains unchanged and continues to contain the count matrix
     # used by SCVI.
-    #
     preprocess_data(
         adata=adata,
         sample_key=sample_key,
@@ -714,21 +410,15 @@ def run_analysis(
         output_annotations=output_annotations,
     )
 
-    print(
-        "\nSCVI/SCANVI workflow completed successfully."
-    )
+    print("\nSCVI/SCANVI workflow completed successfully.")
 
 
 # =============================================================================
 # Command-line interface
 # =============================================================================
 
-def parse_devices(
-    value: str,
-) -> int | str | None:
-    """
-    Convert the --devices argument to an integer, string, or None.
-    """
+def parse_devices(value: str) -> int | str | None:
+    """Convert the --devices argument to an integer, string, or None."""
     if value.lower() == "none":
         return None
 
@@ -739,235 +429,49 @@ def parse_devices(
 
 
 def parse_arguments() -> argparse.Namespace:
-    """
-    Parse command-line arguments.
-    """
-    parser = argparse.ArgumentParser(
-        description=(
-            "Train SCVI and SCANVI models for multi-sample "
-            "single-cell RNA-seq integration and annotation."
-        )
-    )
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Train SCVI and SCANVI models for multi-sample single-cell RNA-seq integration and annotation.")
 
     # -------------------------------------------------------------------------
     # Input/output
     # -------------------------------------------------------------------------
-
-    parser.add_argument(
-        "--input-h5ad",
-        type=Path,
-        required=True,
-        help="Input AnnData file.",
-    )
-
-    parser.add_argument(
-        "--output-h5ad",
-        type=Path,
-        required=True,
-        help="Final AnnData file containing SCVI/SCANVI results.",
-    )
-
-    parser.add_argument(
-        "--scvi-model",
-        type=Path,
-        required=True,
-        help="Output directory for the trained SCVI model.",
-    )
-
-    parser.add_argument(
-        "--scanvi-model",
-        type=Path,
-        required=True,
-        help="Output directory for the trained SCANVI model.",
-    )
-
-    parser.add_argument(
-        "--output-annotations",
-        type=Path,
-        required=True,
-        help="Output table containing SCANVI cell-type predictions.",
-    )
+    parser.add_argument("--input-h5ad", type=Path, required=True, help="Input AnnData file.")
+    parser.add_argument("--output-h5ad", type=Path, required=True, help="Final AnnData file containing SCVI/SCANVI results.")
+    parser.add_argument("--scvi-model", type=Path, required=True, help="Output directory for the trained SCVI model.")
+    parser.add_argument("--scanvi-model", type=Path, required=True, help="Output directory for the trained SCANVI model.")
+    parser.add_argument("--output-annotations", type=Path, required=True, help="Output table containing SCANVI cell-type predictions.")
 
     # -------------------------------------------------------------------------
     # AnnData fields
     # -------------------------------------------------------------------------
-
-    parser.add_argument(
-        "--sample-key",
-        default=DEFAULT_SAMPLE_KEY,
-        help=(
-            "Column containing sample identifiers. "
-            f"Default: {DEFAULT_SAMPLE_KEY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--chip-key",
-        default=DEFAULT_CHIP_KEY,
-        help=(
-            "Column containing 10x chip identifiers. "
-            f"Default: {DEFAULT_CHIP_KEY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--labels-key",
-        default=DEFAULT_LABELS_KEY,
-        help=(
-            "Column containing cell-type labels. "
-            f"Default: {DEFAULT_LABELS_KEY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--unlabeled-category",
-        default=DEFAULT_UNLABELED_CATEGORY,
-        help=(
-            "Category indicating unlabeled cells. "
-            f"Default: {DEFAULT_UNLABELED_CATEGORY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--pct-mt-key",
-        default=DEFAULT_PCT_MT_KEY,
-        help=(
-            "Column containing mitochondrial percentage. "
-            f"Default: {DEFAULT_PCT_MT_KEY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--total-counts-key",
-        default=DEFAULT_TOTAL_COUNTS_KEY,
-        help=(
-            "Column containing total counts per cell. "
-            f"Default: {DEFAULT_TOTAL_COUNTS_KEY}"
-        ),
-    )
-
-    parser.add_argument(
-        "--counts-layer",
-        default=DEFAULT_COUNTS_LAYER,
-        help=(
-            "Layer containing raw/SoupX-corrected counts used by SCVI. "
-            f"Default: {DEFAULT_COUNTS_LAYER}"
-        ),
-    )
+    parser.add_argument("--sample-key", default=DEFAULT_SAMPLE_KEY, help=f"Column containing sample identifiers. Default: {DEFAULT_SAMPLE_KEY}")
+    parser.add_argument("--chip-key", default=DEFAULT_CHIP_KEY, help=f"Column containing 10x chip identifiers. Default: {DEFAULT_CHIP_KEY}")
+    parser.add_argument("--labels-key", default=DEFAULT_LABELS_KEY, help=f"Column containing cell-type labels. Default: {DEFAULT_LABELS_KEY}")
+    parser.add_argument("--unlabeled-category", default=DEFAULT_UNLABELED_CATEGORY, help=f"Category indicating unlabeled cells. Default: {DEFAULT_UNLABELED_CATEGORY}")
+    parser.add_argument("--pct-mt-key", default=DEFAULT_PCT_MT_KEY, help=f"Column containing mitochondrial percentage. Default: {DEFAULT_PCT_MT_KEY}")
+    parser.add_argument("--total-counts-key", default=DEFAULT_TOTAL_COUNTS_KEY, help=f"Column containing total counts per cell. Default: {DEFAULT_TOTAL_COUNTS_KEY}")
+    parser.add_argument("--counts-layer", default=DEFAULT_COUNTS_LAYER, help=f"Layer containing raw/SoupX-corrected counts used by SCVI. Default: {DEFAULT_COUNTS_LAYER}")
 
     # -------------------------------------------------------------------------
     # HVG selection
     # -------------------------------------------------------------------------
-
-    parser.add_argument(
-        "--target-sum",
-        type=float,
-        default=DEFAULT_TARGET_SUM,
-        help="Target count for normalization. Default: 10000.",
-    )
-
-    parser.add_argument(
-        "--n-hvgs",
-        type=int,
-        default=DEFAULT_N_HVGS,
-        help="Number of highly variable genes. Default: 3000.",
-    )
-
-    parser.add_argument(
-        "--min-mean",
-        type=float,
-        default=DEFAULT_MIN_MEAN,
-        help="Minimum mean expression for HVG selection.",
-    )
-
-    parser.add_argument(
-        "--max-mean",
-        type=float,
-        default=DEFAULT_MAX_MEAN,
-        help="Maximum mean expression for HVG selection.",
-    )
-
-    parser.add_argument(
-        "--min-disp",
-        type=float,
-        default=DEFAULT_MIN_DISP,
-        help="Minimum dispersion for HVG selection.",
-    )
-
-    parser.add_argument(
-        "--span",
-        type=float,
-        default=DEFAULT_SPAN,
-        help="Span parameter for HVG selection.",
-    )
+    parser.add_argument("--target-sum", type=float, default=DEFAULT_TARGET_SUM, help="Target count for normalization. Default: 10000.")
+    parser.add_argument("--n-hvgs", type=int, default=DEFAULT_N_HVGS, help="Number of highly variable genes. Default: 3000.")
+    parser.add_argument("--min-mean", type=float, default=DEFAULT_MIN_MEAN, help="Minimum mean expression for HVG selection.")
+    parser.add_argument("--max-mean", type=float, default=DEFAULT_MAX_MEAN, help="Maximum mean expression for HVG selection.")
+    parser.add_argument("--min-disp", type=float, default=DEFAULT_MIN_DISP, help="Minimum dispersion for HVG selection.")
+    parser.add_argument("--span", type=float, default=DEFAULT_SPAN, help="Span parameter for HVG selection.")
 
     # -------------------------------------------------------------------------
     # Training
     # -------------------------------------------------------------------------
-
-    parser.add_argument(
-        "--scvi-max-epochs",
-        type=int,
-        default=None,
-        help=(
-            "Maximum SCVI training epochs. "
-            "If omitted, scvi-tools determines the training duration."
-        ),
-    )
-
-    parser.add_argument(
-        "--scanvi-max-epochs",
-        type=int,
-        default=None,
-        help=(
-            "Maximum SCANVI training epochs. "
-            "If omitted, scvi-tools determines the training duration."
-        ),
-    )
-
-    parser.add_argument(
-        "--accelerator",
-        default="auto",
-        help=(
-            "Training accelerator, e.g. 'auto', 'cpu', or 'gpu'. "
-            "Default: auto."
-        ),
-    )
-
-    parser.add_argument(
-        "--devices",
-        default="none",
-        help=(
-            "Number of devices for training. "
-            "Use 'none' to let scvi-tools determine the setting. "
-            "Default: none."
-        ),
-    )
-
-    parser.add_argument(
-        "--library-size",
-        type=float,
-        default=1e4,
-        help=(
-            "Library size used when generating SCVI normalized expression. "
-            "Default: 10000."
-        ),
-    )
-
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=0,
-        help="Random seed. Default: 0.",
-    )
-
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help=(
-            "Overwrite existing SCVI/SCANVI model directories."
-        ),
-    )
+    parser.add_argument("--scvi-max-epochs", type=int, default=None, help="Maximum SCVI training epochs. If omitted, scvi-tools determines the training duration.")
+    parser.add_argument("--scanvi-max-epochs", type=int, default=None, help="Maximum SCANVI training epochs. If omitted, scvi-tools determines the training duration.")
+    parser.add_argument("--accelerator", default="auto", help="Training accelerator, e.g. 'auto', 'cpu', or 'gpu'. Default: auto.")
+    parser.add_argument("--devices", default="none", help="Number of devices for training. Use 'none' to let scvi-tools determine the setting. Default: none.")
+    parser.add_argument("--library-size", type=float, default=1e4, help="Library size used when generating SCVI normalized expression. Default: 10000.")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed. Default: 0.")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing SCVI/SCANVI model directories.")
 
     return parser.parse_args()
 
