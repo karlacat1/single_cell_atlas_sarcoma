@@ -23,7 +23,7 @@ Usage:
 
 import argparse
 import os
-
+import harmonypy as hm
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -61,14 +61,18 @@ MARKERS_LONG = {
     'apCAFs': ['HLA-DRA', 'HLA-DRB1', 'CD74'],
 }
 
-
-def recluster(adata, resolution, key='leiden_stromal'):
-    """Leiden clustering at the given resolution, with a dendrogram."""
-    sc.tl.leiden(adata, random_state=0, key_added=key, resolution=resolution)
-    adata.obs[key] = adata.obs[key].astype(str)
-    sc.tl.dendrogram(adata, groupby=key)
-    print(f'-> {adata.obs[key].nunique()} clusters at resolution {resolution}')
-    return key
+def integrate(adata, n_pcs=50, resolution=0.5, n_neighbors=15, cluster_key="leiden"):
+    """PCA, Harmony integration, neighbourhood graph, UMAP and Leiden."""
+    sc.tl.pca(adata, svd_solver='arpack', random_state=42)
+    adata.obs['10x_chip'] = adata.obs['10x_chip'].astype(str)
+    harmony_out = hm.run_harmony(adata.obsm["X_pca"].copy(), adata.obs, ['sample', '10x_chip'])
+    adata.obsm["X_pca_harmony"] = harmony_out.Z_corr
+    sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs,
+                    use_rep='X_pca_harmony', random_state=42)
+    sc.tl.umap(adata, random_state=42)
+    sc.tl.leiden(adata, random_state=42, resolution=resolution, key_added=cluster_key)
+    print(f'-> {adata.obs[cluster_key].nunique()} clusters at resolution {resolution}')
+    return adata
 
 
 def score_marker_panels(adata, marker_sets, cluster_key, output_dir):
@@ -77,7 +81,7 @@ def score_marker_panels(adata, marker_sets, cluster_key, output_dir):
     cluster is labelled with its highest-scoring panel as a starting point for
     manual review.
     """
-    available = adata.raw.var_names
+    available = adata.var_names
     scores = []
 
     for state, genes in marker_sets.items():
@@ -113,7 +117,8 @@ def score_marker_panels(adata, marker_sets, cluster_key, output_dir):
 
 def marker_expression(adata, marker_sets, cluster_key, output_dir):
     """Matrixplot of scaled marker expression per cluster."""
-    adata_raw = adata.raw.to_adata()
+    #adata_raw = adata.raw.to_adata()
+    adata_raw = adata
     adata_raw.obs[cluster_key] = adata.obs[cluster_key]
     adata_raw.obsm['X_umap'] = adata.obsm['X_umap']
     adata_raw.layers['scaled'] = sc.pp.scale(adata_raw, copy=True).X
@@ -150,7 +155,8 @@ def main():
     parser.add_argument('--output-dir', required=True)
     parser.add_argument('--output-h5ad', required=True)
     parser.add_argument('--resolution', type=float, default=1.0)
-    parser.add_argument('--cluster-key', default='leiden_stromal')
+    parser.add_argument('--cluster-key', default='leiden')
+    parser.add_argument('--n-pcs', type=int, default=50)
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -160,8 +166,9 @@ def main():
     adata = sc.read_h5ad(args.adata)
     print(f'{adata.shape[0]} cells x {adata.shape[1]} genes')
 
-    print('-> Reclustering')
-    cluster_key = recluster(adata, args.resolution, args.cluster_key)
+    print('-> Reintegrating and clustering')
+    adata = integrate(adata, n_pcs=args.n_pcs, resolution=args.resolution, cluster_key=args.cluster_key)
+    cluster_key = args.cluster_key
 
     sc.pl.umap(adata, color=[cluster_key], legend_loc='on data',
                legend_fontsize=12, legend_fontoutline=4, show=False)
