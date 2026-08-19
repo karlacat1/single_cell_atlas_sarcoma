@@ -48,7 +48,7 @@ def run_sccoda(adata, group, group_order, cell_type_col, sample_col,
     data = model.load(adata, type='cell_level', generate_sample_level=True,
                       cell_type_identifier=cell_type_col,
                       sample_identifier=sample_col, covariate_obs=[group])
-    data = model.prepare(data, modality_key='coda', formula=f'C({group}, Sum)',
+    data = model.prepare(data, modality_key='coda', formula=f'C(Q("{group}"), Sum)',
                          reference_cell_type=reference_cell_type)
     model.run_nuts(data, modality_key='coda', rng_key=rng_key)
     model.set_fdr(data, est_fdr=fdr)
