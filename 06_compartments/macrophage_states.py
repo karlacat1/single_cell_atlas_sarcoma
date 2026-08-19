@@ -23,7 +23,7 @@ Usage:
 
 import argparse
 import os
-
+import harmonypy as hm
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -57,7 +57,8 @@ def recluster(adata, n_pcs=50, resolution=1.0, n_neighbors=15):
     """PCA, Harmony integration, neighbourhood graph, UMAP and Leiden."""
     sc.tl.pca(adata, svd_solver='arpack', random_state=42)
     adata.obs['10x_chip'] = adata.obs['10x_chip'].astype(str)
-    sce.pp.harmony_integrate(adata, key=['sample', '10x_chip'])
+    harmony_out = hm.run_harmony(adata.obsm["X_pca"].copy(), adata.obs, ['sample', '10x_chip'])
+    adata.obsm["X_pca_harmony"] = harmony_out.Z_corr
     sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs,
                     use_rep='X_pca_harmony', random_state=42)
     sc.tl.umap(adata, random_state=42)
@@ -83,7 +84,7 @@ def differential_expression(adata, output_dir):
 def score_marker_panels(adata, marker_sets, output_dir, prefix):
     """Score each marker panel and plot the scores on the UMAP."""
     for name, genes in marker_sets.items():
-        genes = [g for g in genes if g in adata.raw.var_names]
+        genes = [g for g in genes if g in adata.var_names]
         if not genes:
             print(f'   no genes present for {name}, skipping')
             continue
