@@ -24,7 +24,7 @@ Usage:
 
 import argparse
 import os
-
+import harmonypy as hm
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -37,7 +37,7 @@ SIGNATURES = {
     'CD4': {
         'Naive': ['IL7R', 'CCR7', 'SELL', 'FOXP1', 'KLF2', 'KLF3', 'LEF1', 'TCF7',
                   'ACTN1', 'BTG1', 'BTG2', 'TOB1'],
-        'Activation/Effector': ['FAS', 'CD44', 'CD69', 'CD38', 'NKG7', 'KLRB1', 'KLRD1',
+        'Activation_Effector': ['FAS', 'CD44', 'CD69', 'CD38', 'NKG7', 'KLRB1', 'KLRD1',
                                 'KLRG1', 'CX3CR1', 'CD300A', 'FGFBP2', 'ID2', 'ID3',
                                 'PRDM1', 'RUNX3', 'TBX21', 'ZEB2', 'BATF', 'NR4A1',
                                 'NR4A2', 'HOPX', 'FOS', 'FOSB', 'FOSL2', 'JUN', 'JUNB',
@@ -48,7 +48,7 @@ SIGNATURES = {
     'CD8': {
         'Naive': ['IL7R', 'CCR7', 'SELL', 'FOXO1', 'KLF2', 'KLF3', 'LEF1', 'TCF7',
                   'ACTN1', 'FOXP1'],
-        'Activation/Effector': ['FAS', 'FASLG', 'CD44', 'CD69', 'CD38', 'NKG7', 'KLRB1',
+        'Activation_Effector': ['FAS', 'FASLG', 'CD44', 'CD69', 'CD38', 'NKG7', 'KLRB1',
                                 'KLRD1', 'KLRF1', 'KLRG1', 'KLRK1', 'FCGR3A', 'CX3CR1',
                                 'CD300A', 'FGFBP2', 'ID2', 'ID3', 'PRDM1', 'RUNX3',
                                 'TBX21', 'ZEB2', 'BATF', 'IRF4', 'NR4A1', 'NR4A2',
@@ -99,16 +99,17 @@ REFERENCE_STATES = {
 }
 
 
-def integrate(adata, n_pcs=50, resolution=0.5, n_neighbors=15):
+def integrate(adata, n_pcs=50, resolution=0.5, n_neighbors=15, cluster_key="leiden"):
     """PCA, Harmony integration, neighbourhood graph, UMAP and Leiden."""
     sc.tl.pca(adata, svd_solver='arpack', random_state=42)
     adata.obs['10x_chip'] = adata.obs['10x_chip'].astype(str)
-    sce.pp.harmony_integrate(adata, ['sample', '10x_chip'])
+    harmony_out = hm.run_harmony(adata.obsm["X_pca"].copy(), adata.obs, ['sample', '10x_chip'])
+    adata.obsm["X_pca_harmony"] = harmony_out.Z_corr
     sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=n_pcs,
                     use_rep='X_pca_harmony', random_state=42)
     sc.tl.umap(adata, random_state=42)
-    sc.tl.leiden(adata, random_state=42, resolution=resolution)
-    print(f'-> {adata.obs["leiden"].nunique()} clusters at resolution {resolution}')
+    sc.tl.leiden(adata, random_state=42, resolution=resolution, key_added=cluster_key)
+    print(f'-> {adata.obs[cluster_key].nunique()} clusters at resolution {resolution}')
     return adata
 
 
