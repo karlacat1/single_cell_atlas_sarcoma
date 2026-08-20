@@ -312,8 +312,8 @@ def parse_args():
                         help='Path to a cell cycle gene list file (S-phase genes then G2/M genes, one per line)')
     parser.add_argument('--metadata', default=None,
                         help='Optional metadata table to attach to adata.obs')
-    parser.add_argument('--metadata-sep', default=';',
-                        help='Delimiter for the metadata table (default: ";")')
+    parser.add_argument('--metadata-sep', default=',',
+                        help='Delimiter for the metadata table (default: ",")')
     parser.add_argument('--metadata-index-col', default=None,
                         help='Column in the metadata table matching the "sample" values in the sample sheet '
                              '(default: first column)')
